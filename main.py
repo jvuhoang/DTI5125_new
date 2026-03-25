@@ -916,43 +916,116 @@ def handle_differentiate(params):
 
 
 def handle_get_risk_factors(params):
+    """
+    Returns risk factors for a disease, optionally filtered by category.
+
+    Intent mismatch fix: Dialogflow sometimes routes protective-intent queries
+    ("reduce risk", "protective", "beneficial", "prevent") to GetRiskFactors
+    because the training phrases overlap. We detect these keywords in the raw
+    query text (injected by the webhook as _raw_query) and delegate to
+    handle_get_protective_factors instead.
+
+    Also reads an optional factorType param (risk / protective / all) for
+    Dialogflow intents that pass the intent type explicitly.
+    """
     disease_uri = resolve_disease(params.get("disease", ""))
     cat_val     = _unwrap_param(params.get("factorCategory", "")).lower()
+    factor_type = _unwrap_param(params.get("factorType", "")).lower()
 
     if not disease_uri:
         return "Please specify a disease: Alzheimer's, Parkinson's, or ALS."
 
-    factors = get_factors_of_disease(disease_uri, "isRiskFactorFor")
-    dname   = DISEASE_NAMES.get(str(disease_uri), "")
+    dname = DISEASE_NAMES.get(str(disease_uri), "")
 
+    # Detect protective intent from factorType param or raw query keywords.
+    # Dialogflow may mis-route when the user says "reduce", "prevent", etc.
+    PROTECTIVE_KEYWORDS = {
+        "reduce", "reducing", "prevent", "preventing", "prevention",
+        "protective", "protect", "beneficial", "benefit", "helps",
+        "lower", "lowering", "decrease", "decreasing", "avoid",
+        "avoiding", "good for", "help prevent", "can reduce",
+    }
+    raw_query = params.get("_raw_query", "").lower()
+    query_is_protective = (
+        factor_type in ("protective", "protect", "beneficial") or
+        any(kw in raw_query for kw in PROTECTIVE_KEYWORDS)
+    )
+    if query_is_protective:
+        return handle_get_protective_factors(params)
+
+    # Normal risk factor path
+    factors = get_factors_of_disease(disease_uri, "isRiskFactorFor")
     if not factors:
         return f"No risk factors found for {dname} in the ontology."
 
+    cat_class_map = {
+        "genetic":         FACTOR_CAT_GENETIC,
+        "lifestyle":       FACTOR_CAT_LIFESTYLE,
+        "epidemiological": FACTOR_CAT_EPIDEMIOLOGICAL,
+    }
     if cat_val:
-        cat_class_map = {
-            "genetic":         FACTOR_CAT_GENETIC,
-            "lifestyle":       FACTOR_CAT_LIFESTYLE,
-            "epidemiological": FACTOR_CAT_EPIDEMIOLOGICAL,
-        }
         cat_class = next((v for k, v in cat_class_map.items() if k in cat_val), None)
         if cat_class:
-            factors = [f for f in factors if (f, TRIAGE["belongsToFactorCategory"], cat_class) in g]
+            factors = [f for f in factors
+                       if (f, TRIAGE["belongsToFactorCategory"], cat_class) in g]
             dname  += f" ({cat_val})"
+
+    if not factors:
+        return f"No {cat_val} risk factors found for {dname} in the ontology."
 
     labels = sorted(get_label(f) for f in factors)
     return f"Risk factors for {dname}:\n" + "\n".join(f"• {l}" for l in labels)
 
 
 def handle_get_protective_factors(params):
+    """
+    Returns protective/beneficial factors for a disease.
+    Supports optional factorCategory filtering (lifestyle, genetic, epidemiological).
+    Also returns contradictory-evidence factors in a separate section so the
+    user gets a complete picture of lifestyle choices that affect the disease.
+    """
     disease_uri = resolve_disease(params.get("disease", ""))
+    cat_val     = _unwrap_param(params.get("factorCategory", "")).lower()
+
     if not disease_uri:
         return "Please specify a disease: Alzheimer's, Parkinson's, or ALS."
-    factors = get_factors_of_disease(disease_uri, "isProtectiveFactorFor")
-    dname   = DISEASE_NAMES.get(str(disease_uri), "")
-    if not factors:
-        return f"No protective factors documented for {dname} in the ontology."
-    labels = sorted(get_label(f) for f in factors)
-    return f"Protective / beneficial factors for {dname}:\n" + "\n".join(f"• {l}" for l in labels)
+
+    dname      = DISEASE_NAMES.get(str(disease_uri), "")
+    prot_all   = get_factors_of_disease(disease_uri, "isProtectiveFactorFor")
+    cont_all   = get_factors_of_disease(disease_uri, "hasContradictoryEvidenceFor")
+
+    cat_class_map = {
+        "genetic":         FACTOR_CAT_GENETIC,
+        "lifestyle":       FACTOR_CAT_LIFESTYLE,
+        "epidemiological": FACTOR_CAT_EPIDEMIOLOGICAL,
+    }
+    cat_class = next((v for k, v in cat_class_map.items() if k in cat_val), None) if cat_val else None
+
+    if cat_class:
+        prot_all = [f for f in prot_all if (f, TRIAGE["belongsToFactorCategory"], cat_class) in g]
+        cont_all = [f for f in cont_all if (f, TRIAGE["belongsToFactorCategory"], cat_class) in g]
+        dname_display = f"{dname} ({cat_val})"
+    else:
+        dname_display = dname
+
+    parts = []
+    if prot_all:
+        labels = sorted(get_label(f) for f in prot_all)
+        parts.append(
+            f"Protective / beneficial factors for {dname_display}:\n"
+            + "\n".join(f"• {l}" for l in labels)
+        )
+    if cont_all:
+        labels = sorted(get_label(f) for f in cont_all)
+        parts.append(
+            "Contradictory evidence (studies both support and dispute benefit):\n"
+            + "\n".join(f"• {l}" for l in labels)
+        )
+
+    if not parts:
+        return f"No protective factors documented for {dname_display} in the ontology."
+
+    return "\n\n".join(parts)
 
 
 def handle_get_genetic_factors(params):
@@ -1148,6 +1221,12 @@ def webhook():
     query_result = req.get("queryResult", {})
     intent_name  = query_result.get("intent", {}).get("displayName", "")
     params       = query_result.get("parameters", {})
+
+    # Inject the raw user query text into params as _raw_query so handlers
+    # can detect intent from natural language when Dialogflow mis-routes.
+    # Used by handle_get_risk_factors to detect protective-intent queries
+    # ("reduce risk", "prevent", "beneficial") even when routed to GetRiskFactors.
+    params["_raw_query"] = query_result.get("queryText", "")
 
     # Flatten all output context parameters into one session dict
     session_p: dict = {}
