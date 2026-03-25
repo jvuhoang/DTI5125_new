@@ -92,9 +92,21 @@ def get_definition(uri):
 
 
 def resolve_disease(raw_text):
-    """Map a Dialogflow @Disease entity value to an ontology URI."""
+    """Map a Dialogflow @Disease entity value to an ontology URI.
+
+    Dialogflow ES sends multi-value entity params as a list even when only
+    one value is matched (e.g. ["Alzheimer's Disease"]).  Extract the first
+    non-empty string before calling .strip() so we never hit
+    'list object has no attribute strip'.
+    """
     if not raw_text:
         return None
+    # Unwrap list → take first non-empty element
+    if isinstance(raw_text, list):
+        candidates = [v for v in raw_text if v]
+        if not candidates:
+            return None
+        raw_text = candidates[0]
     clean = raw_text.strip().lower()
     # Try direct match first
     if clean in DISEASE_URIS:
@@ -107,9 +119,21 @@ def resolve_disease(raw_text):
 
 
 def resolve_symptom(raw_text):
-    """Map a @Symptom entity value to an ontology URI."""
+    """Map a @Symptom entity value to an ontology URI.
+
+    Dialogflow ES sends multi-value entity params as a list even when only
+    one value is matched (e.g. ["resting_tremor"]).  Extract the first
+    non-empty string before calling .strip() so we never hit
+    'list object has no attribute strip'.
+    """
     if not raw_text:
         return None
+    # Unwrap list → take first non-empty element
+    if isinstance(raw_text, list):
+        candidates = [v for v in raw_text if v]
+        if not candidates:
+            return None
+        raw_text = candidates[0]
     # Try exact label match first
     clean = raw_text.strip().lower()
     if clean in label_to_uri:
@@ -197,44 +221,62 @@ def handle_report_symptoms(params, session_params):
     if not sym_val:
         return "Could you describe the symptom in more detail? For example: resting tremor, limb weakness, memory loss, or breathing problems."
 
-    s_uri = resolve_symptom(sym_val)
-    if not s_uri:
-        return (f"I noted '{sym_val}' but couldn't find an exact match in the ontology. "
-                "Could you rephrase? For example: resting tremor, limb weakness, or episodic memory loss.")
+    # Dialogflow ES sends multi-value params as a list — normalise to a list
+    if isinstance(sym_val, str):
+        sym_val = [sym_val]
 
-    label = get_label(s_uri)
-    defn = get_definition(s_uri)
+    # Process each reported symptom and build a combined response
+    responses = []
+    for single_sym in sym_val:
+        if not single_sym:
+            continue
+        s_uri = resolve_symptom(single_sym)
+        if not s_uri:
+            responses.append(
+                f"I noted '{single_sym}' but couldn't find an exact match in the ontology. "
+                "Could you rephrase? For example: resting tremor, limb weakness, or episodic memory loss."
+            )
+            continue
 
-    # Check typicality
-    typical_of = list(g.objects(s_uri, TRIAGE["moreTypicalOf"]))
-    typical_str = ""
-    if typical_of:
-        names = [DISEASE_SHORT.get(str(d), get_label(d)) for d in typical_of]
-        typical_str = f" This symptom is most typical of {', '.join(names)}."
+        label = get_label(s_uri)
+        defn = get_definition(s_uri)
 
-    # Check which diseases it appears in
-    appearances = []
-    for disease_uri in [TRIAGE["alzheimers_disease"], TRIAGE["parkinson_disease"], TRIAGE["als_disease"]]:
-        primary = set(g.objects(disease_uri, TRIAGE["hasPrimarySymptom"]))
-        has = set(g.objects(disease_uri, TRIAGE["hasSymptom"]))
-        overlap = set(g.objects(disease_uri, TRIAGE["hasOverlappingSymptom"]))
-        dname = DISEASE_SHORT[str(disease_uri)]
-        if s_uri in primary:
-            appearances.append(f"{dname} (primary)")
-        elif s_uri in has:
-            appearances.append(f"{dname} (associated)")
-        elif s_uri in overlap:
-            appearances.append(f"{dname} (overlapping)")
+        # Check typicality
+        typical_of = list(g.objects(s_uri, TRIAGE["moreTypicalOf"]))
+        typical_str = ""
+        if typical_of:
+            names = [DISEASE_SHORT.get(str(d), get_label(d)) for d in typical_of]
+            typical_str = f" This symptom is most typical of {', '.join(names)}."
 
-    appear_str = ""
-    if appearances:
-        appear_str = f" Seen in: {', '.join(appearances)}."
+        # Check which diseases it appears in
+        appearances = []
+        for disease_uri in [TRIAGE["alzheimers_disease"], TRIAGE["parkinson_disease"], TRIAGE["als_disease"]]:
+            primary = set(g.objects(disease_uri, TRIAGE["hasPrimarySymptom"]))
+            has = set(g.objects(disease_uri, TRIAGE["hasSymptom"]))
+            overlap = set(g.objects(disease_uri, TRIAGE["hasOverlappingSymptom"]))
+            dname = DISEASE_SHORT[str(disease_uri)]
+            if s_uri in primary:
+                appearances.append(f"{dname} (primary)")
+            elif s_uri in has:
+                appearances.append(f"{dname} (associated)")
+            elif s_uri in overlap:
+                appearances.append(f"{dname} (overlapping)")
 
-    response = f"Noted: {label}.{typical_str}{appear_str}"
-    if defn:
-        response += f"\n\nDefinition: {defn}"
-    response += "\n\nShall I continue triage? Tell me another symptom or say 'give me the assessment'."
-    return response
+        appear_str = ""
+        if appearances:
+            appear_str = f" Seen in: {', '.join(appearances)}."
+
+        entry = f"Noted: {label}.{typical_str}{appear_str}"
+        if defn:
+            entry += f"\n\nDefinition: {defn}"
+        responses.append(entry)
+
+    if not responses:
+        return "Could not process the reported symptom(s). Please rephrase."
+
+    combined = "\n\n".join(responses)
+    combined += "\n\nShall I continue triage? Tell me another symptom or say 'give me the assessment'."
+    return combined
 
 
 def handle_get_primary_symptoms(params):
@@ -338,35 +380,99 @@ def handle_get_symptoms_by_category(params):
 
 def handle_get_disease_from_symptom(params):
     sym_val = params.get("symptom", "")
-    s_uri = resolve_symptom(sym_val)
-    if not s_uri:
-        return f"I couldn't find '{sym_val}' in the ontology. Try: resting tremor, limb weakness, or episodic memory loss."
 
-    label = get_label(s_uri)
-    defn = get_definition(s_uri)
+    # Dialogflow ES sends multi-value params as a list — normalise to list
+    if isinstance(sym_val, str):
+        sym_val = [sym_val] if sym_val else []
 
-    typical_of = list(g.objects(s_uri, TRIAGE["moreTypicalOf"]))
-    appearances = []
-    for disease_uri in [TRIAGE["alzheimers_disease"], TRIAGE["parkinson_disease"], TRIAGE["als_disease"]]:
-        primary = set(g.objects(disease_uri, TRIAGE["hasPrimarySymptom"]))
-        has = set(g.objects(disease_uri, TRIAGE["hasSymptom"]))
-        overlap = set(g.objects(disease_uri, TRIAGE["hasOverlappingSymptom"]))
-        dname = DISEASE_SHORT[str(disease_uri)]
-        if s_uri in primary: appearances.append(f"• {dname}: primary symptom")
-        elif s_uri in has: appearances.append(f"• {dname}: associated symptom")
-        elif s_uri in overlap: appearances.append(f"• {dname}: overlapping symptom")
+    # Filter out empty values
+    sym_val = [s for s in sym_val if s]
 
-    response = f"{label}"
-    if defn:
-        response += f"\n{defn}"
-    if typical_of:
-        names = [DISEASE_SHORT.get(str(d), get_label(d)) for d in typical_of]
-        response += f"\n\nMost typical of: {', '.join(names)}."
-    if appearances:
-        response += f"\n\nAppears in:\n" + "\n".join(appearances)
-    if not appearances and not typical_of:
-        response += "\n\nThis symptom was not found linked to any of the three diseases in the ontology."
-    return response
+    if not sym_val:
+        return "Please describe a symptom. For example: resting tremor, limb weakness, or episodic memory loss."
+
+    # Resolve all reported symptoms to URIs
+    resolved = []
+    unresolved = []
+    for s in sym_val:
+        uri = resolve_symptom(s)
+        if uri:
+            resolved.append((s, uri))
+        else:
+            unresolved.append(s)
+
+    # If NONE of the symptoms exist in the ontology — graceful no-result
+    if not resolved:
+        symptom_list = ", ".join(f"'{s}'" for s in sym_val)
+        return (
+            f"I couldn't find any specific neurological information for {symptom_list} "
+            "in the ontology. These symptoms are not associated with Alzheimer's Disease, "
+            "Parkinson's Disease, or ALS in our knowledge base. "
+            "Please consult a general practitioner for an assessment."
+        )
+
+    # Build per-symptom lookup results
+    lines = []
+    for raw, s_uri in resolved:
+        label = get_label(s_uri)
+        defn = get_definition(s_uri)
+        typical_of = list(g.objects(s_uri, TRIAGE["moreTypicalOf"]))
+        appearances = []
+        for disease_uri in [TRIAGE["alzheimers_disease"], TRIAGE["parkinson_disease"], TRIAGE["als_disease"]]:
+            primary = set(g.objects(disease_uri, TRIAGE["hasPrimarySymptom"]))
+            has = set(g.objects(disease_uri, TRIAGE["hasSymptom"]))
+            overlap = set(g.objects(disease_uri, TRIAGE["hasOverlappingSymptom"]))
+            dname = DISEASE_SHORT[str(disease_uri)]
+            if s_uri in primary:
+                appearances.append(f"• {dname}: primary symptom")
+            elif s_uri in has:
+                appearances.append(f"• {dname}: associated symptom")
+            elif s_uri in overlap:
+                appearances.append(f"• {dname}: overlapping symptom")
+
+        entry = f"{label}"
+        if defn:
+            entry += f"\n{defn}"
+        if typical_of:
+            names = [DISEASE_SHORT.get(str(d), get_label(d)) for d in typical_of]
+            entry += f"\n\nMost typical of: {', '.join(names)}."
+        if appearances:
+            entry += f"\n\nAppears in:\n" + "\n".join(appearances)
+        elif not typical_of:
+            entry += "\n\nThis symptom was not found linked to any of the three diseases in the ontology."
+        lines.append(entry)
+
+    # Note any unresolved symptoms
+    if unresolved:
+        lines.append(
+            f"\nNote: I couldn't find these symptoms in the ontology: "
+            + ", ".join(f"'{s}'" for s in unresolved)
+        )
+
+    # If multiple symptoms were reported, add a combined score summary
+    if len(resolved) > 1:
+        sym_uris = [uri for _, uri in resolved]
+        scores, matched = score_symptoms(sym_uris)
+        all_diseases = [TRIAGE["alzheimers_disease"], TRIAGE["parkinson_disease"], TRIAGE["als_disease"]]
+        ranked = sorted(all_diseases, key=lambda d: scores.get(str(d), 0), reverse=True)
+        top_score = scores.get(str(ranked[0]), 0)
+
+        if top_score > 0:
+            summary_lines = ["\n── Combined Assessment ──"]
+            for i, d_uri in enumerate(ranked):
+                score = scores.get(str(d_uri), 0)
+                if score == 0:
+                    continue
+                dname = DISEASE_NAMES[str(d_uri)]
+                rank_label = ["Most consistent with", "Second consideration", "Less consistent with"][i]
+                summary_lines.append(f"{rank_label}: {dname} (score: {score:.1f})")
+            summary_lines.append(
+                "\n⚠ This is an informational aid only. "
+                "Please consult a neurologist for clinical assessment."
+            )
+            lines.append("\n".join(summary_lines))
+
+    return "\n\n".join(lines)
 
 
 def handle_get_overlapping(params):
@@ -654,7 +760,11 @@ def webhook():
         existing = session_p.get("reported_symptoms", [])
         if isinstance(existing, str):
             existing = [existing]
-        existing.append(params["symptom"])
+        new_syms = params["symptom"]
+        # Normalise: Dialogflow ES sends a list even for single values
+        if isinstance(new_syms, str):
+            new_syms = [new_syms]
+        existing.extend([s for s in new_syms if s])
         session_p["reported_symptoms"] = existing
 
     handler = INTENT_HANDLERS.get(intent_name)
