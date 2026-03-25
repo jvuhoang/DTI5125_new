@@ -90,11 +90,14 @@ DISEASE_URIS = {
     "parkinson's disease":           TRIAGE["parkinson_disease"],
     "parkinson disease":             TRIAGE["parkinson_disease"],
     "pd":                            TRIAGE["parkinson_disease"],
-    "als":                           TRIAGE["als_disease"],
-    "amyotrophic lateral sclerosis": TRIAGE["als_disease"],
+    "als":                                    TRIAGE["als_disease"],
+    "amyotrophic lateral sclerosis":          TRIAGE["als_disease"],
+    "amyotrophic lateral sclerosis (als)":    TRIAGE["als_disease"],  # exact ontology label
     "motor neuron disease":          TRIAGE["als_disease"],
     "mnd":                           TRIAGE["als_disease"],
     "lou gehrig's disease":          TRIAGE["als_disease"],
+    # exact label in ontology
+    "amyotrophic lateral sclerosis (als)": TRIAGE["als_disease"],
 }
 
 DISEASE_NAMES = {
@@ -115,92 +118,245 @@ ALL_DISEASE_URIS = [
     TRIAGE["als_disease"],
 ]
 
+# ─── Ontology category individual URIs ────────────────────────────────────────
+# The ontology stores categories as NAMED INDIVIDUALS, not OWL class URIs.
+#
+# Factor categories — used in belongsToFactorCategory triples:
+#   factor_individual → belongsToFactorCategory → lifestyle_category
+# NOT: FACTOR_CAT_LIFESTYLE  (that is the CLASS, not the individual)
+#
+# The original code used class URIs (FACTOR_CAT_LIFESTYLE etc.) which
+# never matched anything, causing all category-filtered queries to return empty.
+
+FACTOR_CAT_LIFESTYLE       = TRIAGE["lifestyle_category"]
+FACTOR_CAT_GENETIC         = TRIAGE["genetic_category"]
+FACTOR_CAT_EPIDEMIOLOGICAL = TRIAGE["epidemiological_category"]
+
+# Symptom categories — used in belongsToSymptomCategory triples:
+#   symptom_individual → belongsToSymptomCategory → motor_category
+SYMPTOM_CAT_MOTOR        = TRIAGE["motor_category"]
+SYMPTOM_CAT_COGNITIVE    = TRIAGE["cognitive_category"]
+SYMPTOM_CAT_BEHAVIOURAL  = TRIAGE["behavioural_psychiatric_category"]
+SYMPTOM_CAT_AUTONOMIC    = TRIAGE["autonomic_category"]
+SYMPTOM_CAT_SPEECH       = TRIAGE["speech_swallowing_category"]
+SYMPTOM_CAT_RESPIRATORY  = TRIAGE["respiratory_category"]
+SYMPTOM_CAT_SLEEP        = TRIAGE["sleep_category"]
+SYMPTOM_CAT_SENSORY      = TRIAGE["sensory_category"]
+SYMPTOM_CAT_NUTRITIONAL  = TRIAGE["nutritional_metabolic_category"]
+
+
 # ─── FIX-3: Symptom synonym map ───────────────────────────────────────────────
 # Maps Dialogflow entity values (lowercased + underscore-normalised) to the
 # exact local name used in the ontology URI or rdfs:label.
 # Add new entries here whenever a Dialogflow synonym does not resolve
 # automatically to the correct ontology individual.
 SYMPTOM_SYNONYMS = {
-    # Sleep
-    "sleep_disturbance":        "sleep_disturbance",
-    "trouble_sleeping":         "sleep_disturbance",
-    "can't_sleep":              "sleep_disturbance",
-    "cant_sleep":               "sleep_disturbance",
-    "lose_sleep":               "sleep_disturbance",
-    "losing_sleep":             "sleep_disturbance",
-    "insomnia":                 "sleep_disturbance",
-    "poor_sleep":               "sleep_disturbance",
-    "sleep_problems":           "sleep_disturbance",
-    "restless_sleep":           "sleep_disturbance",
-    "disrupted_sleep":          "sleep_disturbance",
-    "acting_out_dreams":        "sleep_disturbance",
-    "act_out_dreams":           "sleep_disturbance",
-    "wake_up_at_night":         "sleep_disturbance",
-    "difficulty_sleeping":      "sleep_disturbance",
-    # Memory
-    "memory_loss":              "memory_loss_symptom",
-    "forgetting_things":        "memory_loss_symptom",
-    "forgetfulness":            "memory_loss_symptom",
-    "forget_things":            "memory_loss_symptom",
-    "episodic_memory_loss":     "memory_loss_symptom",
-    "memory_problems":          "memory_loss_symptom",
-    # Tremor
-    "resting_tremor":           "resting_tremor_symptom",
-    "tremor":                   "resting_tremor_symptom",
-    "shaking":                  "resting_tremor_symptom",
-    "hand_tremor":              "resting_tremor_symptom",
-    "hand_shaking":             "resting_tremor_symptom",
-    "shaky_hands":              "resting_tremor_symptom",
-    # Muscle / motor
-    "muscle_weakness":          "progressive_muscle_weakness_symptom",
-    "limb_weakness":            "progressive_muscle_weakness_symptom",
-    "weak_muscles":             "progressive_muscle_weakness_symptom",
-    "weakness":                 "progressive_muscle_weakness_symptom",
-    "muscle_wasting":           "muscle_wasting_symptom",
-    "muscle_twitching":         "muscle_twitching_symptom",
-    "fasciculations":           "muscle_twitching_symptom",
-    # Speech / swallowing
-    "slurred_speech":           "slurred_speech_symptom",
-    "trouble_speaking":         "slurred_speech_symptom",
-    "difficulty_speaking":      "slurred_speech_symptom",
-    "speech_problems":          "slurred_speech_symptom",
-    "dysarthria":               "dysarthria_symptom",
-    "dysphagia":                "dysphagia_symptom",
-    "trouble_swallowing":       "dysphagia_symptom",
-    "difficulty_swallowing":    "dysphagia_symptom",
-    # Cognitive
-    "confusion":                "confusion_symptom",
-    "getting_confused":         "confusion_symptom",
-    "disorientation":           "disorientation_symptom",
-    "getting_lost":             "disorientation_symptom",
-    "poor_judgement":           "poor_judgement_symptom",
-    "impaired_reasoning":       "poor_judgement_symptom",
-    # Balance / movement
-    "balance_problems":         "balance_problem_symptom",
-    "balance_issues":           "balance_problem_symptom",
-    "falling":                  "balance_problem_symptom",
-    "bradykinesia":             "bradykinesia_symptom",
-    "slow_movement":            "bradykinesia_symptom",
-    "slowness":                 "bradykinesia_symptom",
-    "rigidity":                 "rigidity_symptom",
-    "stiffness":                "rigidity_symptom",
-    "muscle_rigidity":          "rigidity_symptom",
-    # Smell
-    "loss_of_smell":            "olfactory_dysfunction_symptom",
-    "smell_loss":               "olfactory_dysfunction_symptom",
-    "anosmia":                  "olfactory_dysfunction_symptom",
-    "cant_smell":               "olfactory_dysfunction_symptom",
-    # Mood
-    "depression":               "depression_symptom",
-    "depressed":                "depression_symptom",
-    "mood_changes":             "depression_symptom",
-    "anxiety":                  "depression_symptom",
-    # Breathing
-    "breathing_problems":       "respiratory_impairment_symptom",
-    "shortness_of_breath":      "respiratory_impairment_symptom",
-    "respiratory_impairment":   "respiratory_impairment_symptom",
-    "breathlessness":           "respiratory_impairment_symptom",
+    # ── All keys map to the EXACT local name of the named individual in the OWL ──
+    # ── (the part after the # in the URI) ────────────────────────────────────────
+
+    # Sleep disturbance — individual: sleep_disturbance
+    "sleep_disturbance":            "sleep_disturbance",
+    "trouble_sleeping":             "sleep_disturbance",
+    "cant_sleep":                   "sleep_disturbance",
+    "can't_sleep":                  "sleep_disturbance",
+    "lose_sleep":                   "sleep_disturbance",
+    "losing_sleep":                 "sleep_disturbance",
+    "insomnia":                     "sleep_disturbance",
+    "poor_sleep":                   "sleep_disturbance",
+    "sleep_problems":               "sleep_disturbance",
+    "restless_sleep":               "sleep_disturbance",
+    "disrupted_sleep":              "sleep_disturbance",
+    "acting_out_dreams":            "sleep_disturbance",
+    "act_out_dreams":               "sleep_disturbance",
+    "wake_up_at_night":             "sleep_disturbance",
+    "difficulty_sleeping":          "sleep_disturbance",
+    "sleep_issues":                 "sleep_disturbance",
+
+    # Memory — ontology has two separate individuals:
+    #   episodic_memory_impairment  label="Episodic Memory Impairment"
+    #   memory_impairment           label="Memory Impairment"
+    "episodic_memory_loss":         "episodic_memory_impairment",
+    "episodic_memory_impairment":   "episodic_memory_impairment",
+    "forgetting_recent_events":     "episodic_memory_impairment",
+    "short_term_memory_loss":       "episodic_memory_impairment",
+    "memory_loss":                  "memory_impairment",
+    "memory_impairment":            "memory_impairment",
+    "forgetting_things":            "memory_impairment",
+    "forgetfulness":                "memory_impairment",
+    "forget_things":                "memory_impairment",
+    "memory_problems":              "memory_impairment",
+    "bad_memory":                   "memory_impairment",
+
+    # Tremor — ontology has two individuals:
+    #   resting_tremor   label="Resting Tremor"
+    #   tremor           label="Tremor"
+    "resting_tremor":               "resting_tremor",
+    "rest_tremor":                  "resting_tremor",
+    "hand_tremor_at_rest":          "resting_tremor",
+    "tremor":                       "tremor",
+    "shaking":                      "tremor",
+    "hand_tremor":                  "tremor",
+    "hand_shaking":                 "tremor",
+    "shaky_hands":                  "tremor",
+    "shaky":                        "tremor",
+
+    # Motor / muscle — individual: limb_weakness, axial_weakness, muscle_weakness
+    "limb_weakness":                "limb_weakness",
+    "arm_weakness":                 "limb_weakness",
+    "leg_weakness":                 "limb_weakness",
+    "weak_limbs":                   "limb_weakness",
+    "axial_weakness":               "axial_weakness",
+    "core_weakness":                "axial_weakness",
+    "muscle_weakness":              "muscle_weakness",
+    "weak_muscles":                 "muscle_weakness",
+    "weakness":                     "muscle_weakness",
+    "progressive_weakness":         "muscle_weakness",
+    "progressive_muscle_weakness":  "muscle_weakness",
+    "muscle_wasting":               "muscle_weakness",   # no separate wasting individual
+    "muscle_twitching":             "muscle_weakness",   # no separate twitching individual
+    "fasciculations":               "muscle_weakness",
+
+    # Movement / motor — bradykinesia, rigidity, postural instability, gait, falls
+    "bradykinesia":                 "bradykinesia",
+    "slow_movement":                "bradykinesia",
+    "slowness_of_movement":         "bradykinesia",
+    "slowness":                     "bradykinesia",
+    "moving_slowly":                "bradykinesia",
+    "rigidity":                     "rigidity",
+    "stiffness":                    "rigidity",
+    "muscle_rigidity":              "rigidity",
+    "muscle_stiffness":             "rigidity",
+    "postural_instability":         "postural_instability",
+    "balance_problems":             "postural_instability",
+    "balance_issues":               "postural_instability",
+    "poor_balance":                 "postural_instability",
+    "gait_disturbance":             "gait_disturbance",
+    "walking_problems":             "gait_disturbance",
+    "shuffling_gait":               "gait_disturbance",
+    "difficulty_walking":           "gait_disturbance",
+    "falls":                        "falls",
+    "falling":                      "falls",
+    "frequent_falls":               "falls",
+    "keep_falling":                 "falls",
+    "hypokinesia":                  "hypokinesia",
+    "reduced_movement":             "hypokinesia",
+    "akinesia":                     "akinesia",
+    "no_movement":                  "akinesia",
+    "hypomimia":                    "hypomimia",
+    "masked_face":                  "hypomimia",
+    "facial_masking":               "hypomimia",
+    "dystonia":                     "dystonia",
+    "kinesia_paradoxica":           "kinesia_paradoxica",
+
+    # Speech and swallowing — dysarthria, dysphagia, hypophonia, sialorrhoea,
+    #                          bulbar_dysfunction
+    "dysarthria":                   "dysarthria",
+    "slurred_speech":               "dysarthria",
+    "trouble_speaking":             "dysarthria",
+    "difficulty_speaking":          "dysarthria",
+    "speech_problems":              "dysarthria",
+    "slurring":                     "dysarthria",
+    "dysphagia":                    "dysphagia",
+    "trouble_swallowing":           "dysphagia",
+    "difficulty_swallowing":        "dysphagia",
+    "choking":                      "dysphagia",
+    "hypophonia":                   "hypophonia",
+    "soft_voice":                   "hypophonia",
+    "quiet_voice":                  "hypophonia",
+    "weak_voice":                   "hypophonia",
+    "sialorrhoea":                  "sialorrhoea",
+    "drooling":                     "sialorrhoea",
+    "excess_saliva":                "sialorrhoea",
+    "bulbar_dysfunction":           "bulbar_dysfunction",
+
+    # Cognitive — confusion, episodic_memory_impairment, memory_impairment,
+    #             impaired_reasoning, language_impairment, cognitive_psychiatric_als
+    "confusion":                    "confusion",
+    "confused":                     "confusion",
+    "getting_confused":             "confusion",
+    "disorientation":               "confusion",
+    "impaired_reasoning":           "impaired_reasoning",
+    "poor_judgement":               "impaired_reasoning",
+    "bad_decisions":                "impaired_reasoning",
+    "cant_think_clearly":           "impaired_reasoning",
+    "language_impairment":          "language_impairment",
+    "language_problems":            "language_impairment",
+    "word_finding_difficulty":      "language_impairment",
+    "aphasia":                      "language_impairment",
+    "cant_find_words":              "language_impairment",
+    "cognitive_psychiatric_als":    "cognitive_psychiatric_als",
+
+    # Behavioural / psychiatric — behavioural_symptom, depression,
+    #   anxiety, hallucination, neuropsychiatric_dysfunction,
+    #   pseudobulbar_affect, akathisia
+    "behavioural_symptom":          "behavioural_symptom",
+    "behaviour_change":             "behavioural_symptom",
+    "personality_change":           "behavioural_symptom",
+    "changed_personality":          "behavioural_symptom",
+    "depression":                   "depression",
+    "depressed":                    "depression",
+    "feeling_depressed":            "depression",
+    "low_mood":                     "depression",
+    "anxiety":                      "anxiety",
+    "anxious":                      "anxiety",
+    "feeling_anxious":              "anxiety",
+    "hallucination":                "hallucination",
+    "seeing_things":                "hallucination",
+    "hearing_things":               "hallucination",
+    "hallucinations":               "hallucination",
+    "neuropsychiatric_dysfunction": "neuropsychiatric_dysfunction",
+    "mood_changes":                 "neuropsychiatric_dysfunction",
+    "psychiatric_symptoms":         "neuropsychiatric_dysfunction",
+    "pseudobulbar_affect":          "pseudobulbar_affect",
+    "emotional_lability":           "pseudobulbar_affect",
+    "uncontrolled_laughing":        "pseudobulbar_affect",
+    "uncontrolled_crying":          "pseudobulbar_affect",
+    "akathisia":                    "akathisia",
+    "restlessness":                 "akathisia",
+
+    # Sensory — pain, paresthesia, sensory_symptom_als, sensory_symptom_pd
+    "pain":                         "pain",
+    "paresthesia":                  "paresthesia",
+    "tingling":                     "paresthesia",
+    "numbness":                     "paresthesia",
+    "pins_and_needles":             "paresthesia",
+    "sensory_symptom_als":          "sensory_symptom_als",
+    "sensory_symptom_pd":           "sensory_symptom_pd",
+
+    # Autonomic — autonomic_dysfunction_pd, autonomic_symptoms_als,
+    #             constipation, incontinence, excessive_sweating,
+    #             olfactory_dysfunction
+    "autonomic_dysfunction":        "autonomic_dysfunction_pd",
+    "autonomic_symptoms":           "autonomic_symptoms_als",
+    "constipation":                 "constipation",
+    "incontinence":                 "incontinence",
+    "bladder_problems":             "incontinence",
+    "excessive_sweating":           "excessive_sweating",
+    "sweating":                     "excessive_sweating",
+    "loss_of_smell":                "olfactory_dysfunction",
+    "smell_loss":                   "olfactory_dysfunction",
+    "anosmia":                      "olfactory_dysfunction",
+    "cant_smell":                   "olfactory_dysfunction",
+    "no_sense_of_smell":            "olfactory_dysfunction",
+    "olfactory_dysfunction":        "olfactory_dysfunction",
+
+    # Respiratory — respiratory_impairment
+    "respiratory_impairment":       "respiratory_impairment",
+    "breathing_problems":           "respiratory_impairment",
+    "shortness_of_breath":          "respiratory_impairment",
+    "breathlessness":               "respiratory_impairment",
+    "difficulty_breathing":         "respiratory_impairment",
+
+    # Nutritional / metabolic — weight_loss, insulin_resistance
+    "weight_loss":                  "weight_loss",
+    "losing_weight":                "weight_loss",
+    "unintentional_weight_loss":    "weight_loss",
+    "insulin_resistance":           "insulin_resistance",
+
+    # Miscellaneous
+    "neuropsychiatric":             "neuropsychiatric_dysfunction",
 }
+
 
 
 # ─── Helper utilities ──────────────────────────────────────────────────────────
@@ -448,25 +604,28 @@ def handle_get_symptoms_by_category(params):
     disease_uri = resolve_disease(params.get("disease", ""))
 
     cat_map = {
-        "motor":                   TRIAGE["MotorSymptom"],
-        "cognitive":               TRIAGE["CognitiveSymptom"],
-        "behavioural":             TRIAGE["BehaviouralPsychiatricSymptom"],
-        "behavioural_psychiatric": TRIAGE["BehaviouralPsychiatricSymptom"],
-        "psychiatric":             TRIAGE["BehaviouralPsychiatricSymptom"],
-        "autonomic":               TRIAGE["AutonomicSymptom"],
-        "speech":                  TRIAGE["SpeechSwallowingSymptom"],
-        "swallowing":              TRIAGE["SpeechSwallowingSymptom"],
-        "speech_swallowing":       TRIAGE["SpeechSwallowingSymptom"],
-        "respiratory":             TRIAGE["RespiratorySymptom"],
-        "sleep":                   TRIAGE["SleepSymptom"],
-        "sensory":                 TRIAGE["SensorySymptom"],
+        "motor":                   SYMPTOM_CAT_MOTOR,
+        "cognitive":               SYMPTOM_CAT_COGNITIVE,
+        "behavioural":             SYMPTOM_CAT_BEHAVIOURAL,
+        "behavioural_psychiatric": SYMPTOM_CAT_BEHAVIOURAL,
+        "psychiatric":             SYMPTOM_CAT_BEHAVIOURAL,
+        "autonomic":               SYMPTOM_CAT_AUTONOMIC,
+        "speech":                  SYMPTOM_CAT_SPEECH,
+        "swallowing":              SYMPTOM_CAT_SPEECH,
+        "speech_swallowing":       SYMPTOM_CAT_SPEECH,
+        "respiratory":             SYMPTOM_CAT_RESPIRATORY,
+        "sleep":                   SYMPTOM_CAT_SLEEP,
+        "sensory":                 SYMPTOM_CAT_SENSORY,
+        "nutritional":             SYMPTOM_CAT_NUTRITIONAL,
+        "metabolic":               SYMPTOM_CAT_NUTRITIONAL,
+        "nutritional_metabolic":   SYMPTOM_CAT_NUTRITIONAL,
     }
 
     cat_uri = next((uri for key, uri in cat_map.items() if key in cat_val), None)
     if not cat_uri:
         return (
             f"I don't recognise the category '{cat_val}'. "
-            "Try: motor, cognitive, autonomic, speech/swallowing, respiratory, sleep, behavioural, or sensory."
+            "Try: motor, cognitive, autonomic, speech/swallowing, respiratory, sleep, behavioural, sensory, or nutritional."
         )
 
     cat_label         = get_label(cat_uri)
@@ -771,9 +930,9 @@ def handle_get_risk_factors(params):
 
     if cat_val:
         cat_class_map = {
-            "genetic":         TRIAGE["GeneticFactor"],
-            "lifestyle":       TRIAGE["LifestyleFactor"],
-            "epidemiological": TRIAGE["EpidemiologicalFactor"],
+            "genetic":         FACTOR_CAT_GENETIC,
+            "lifestyle":       FACTOR_CAT_LIFESTYLE,
+            "epidemiological": FACTOR_CAT_EPIDEMIOLOGICAL,
         }
         cat_class = next((v for k, v in cat_class_map.items() if k in cat_val), None)
         if cat_class:
@@ -799,7 +958,7 @@ def handle_get_protective_factors(params):
 def handle_get_genetic_factors(params):
     disease_uri = resolve_disease(params.get("disease", ""))
     factor_val  = _unwrap_param(params.get("influencingFactor", ""))
-    gene_cat    = TRIAGE["GeneticFactor"]
+    gene_cat    = FACTOR_CAT_GENETIC
 
     if factor_val:
         f_uri = resolve_symptom(factor_val) or label_to_uri.get(factor_val.lower())
@@ -834,28 +993,64 @@ def handle_get_genetic_factors(params):
 
 
 def handle_get_lifestyle_factors(params):
-    disease_uri   = resolve_disease(params.get("disease", ""))
-    lifestyle_cat = TRIAGE["LifestyleFactor"]
+    """
+    Returns lifestyle risk factors, protective factors, and contradictory
+    factors for a given disease, filtered to lifestyle_category.
+
+    The ontology stores categories as named individuals:
+      factor → belongsToFactorCategory → lifestyle_category  (individual URI)
+    FACTOR_CAT_LIFESTYLE = TRIAGE["lifestyle_category"] now correctly matches.
+
+    Also includes hasContradictoryEvidenceFor factors (e.g. Alcohol,
+    Coffee Drinking for AD) which are lifestyle-related but have conflicting
+    research evidence.
+    """
+    disease_uri = resolve_disease(params.get("disease", ""))
+
+    def filter_by_lifestyle(factors: list) -> list:
+        return [f for f in factors
+                if (f, TRIAGE["belongsToFactorCategory"], FACTOR_CAT_LIFESTYLE) in g]
 
     if disease_uri:
-        all_risk  = get_factors_of_disease(disease_uri, "isRiskFactorFor")
-        lifestyle = [f for f in all_risk if (f, TRIAGE["belongsToFactorCategory"], lifestyle_cat) in g]
-        protective= get_factors_of_disease(disease_uri, "isProtectiveFactorFor")
-        l_protect = [f for f in protective if (f, TRIAGE["belongsToFactorCategory"], lifestyle_cat) in g]
         dname     = DISEASE_NAMES.get(str(disease_uri), "")
-        parts     = []
-        if lifestyle:
-            parts.append("Lifestyle risk factors:\n" + "\n".join(
-                f"• {get_label(f)}" for f in sorted(lifestyle, key=get_label)))
-        if l_protect:
-            parts.append("Lifestyle protective factors:\n" + "\n".join(
-                f"• {get_label(f)}" for f in sorted(l_protect, key=get_label)))
+        risk_all  = get_factors_of_disease(disease_uri, "isRiskFactorFor")
+        prot_all  = get_factors_of_disease(disease_uri, "isProtectiveFactorFor")
+        cont_all  = get_factors_of_disease(disease_uri, "hasContradictoryEvidenceFor")
+
+        lifestyle_risk  = filter_by_lifestyle(risk_all)
+        lifestyle_prot  = filter_by_lifestyle(prot_all)
+        lifestyle_cont  = filter_by_lifestyle(cont_all)
+
+        parts = []
+        if lifestyle_risk:
+            parts.append(
+                "Lifestyle risk factors:\n" +
+                "\n".join(f"• {get_label(f)}" for f in sorted(lifestyle_risk, key=get_label))
+            )
+        if lifestyle_prot:
+            parts.append(
+                "Lifestyle protective factors:\n" +
+                "\n".join(f"• {get_label(f)}" for f in sorted(lifestyle_prot, key=get_label))
+            )
+        if lifestyle_cont:
+            parts.append(
+                "Contradictory evidence (studies conflict):\n" +
+                "\n".join(f"• {get_label(f)}" for f in sorted(lifestyle_cont, key=get_label))
+            )
+
         if not parts:
             return f"No lifestyle factors found for {dname}."
+
         return f"Lifestyle factors for {dname}:\n\n" + "\n\n".join(parts)
 
-    all_lifestyle = list(g.subjects(TRIAGE["belongsToFactorCategory"], lifestyle_cat))
-    labels        = sorted(get_label(f) for f in all_lifestyle)
+    # No disease — return all factors with lifestyle_category
+    all_lifestyle = sorted(
+        g.subjects(TRIAGE["belongsToFactorCategory"], FACTOR_CAT_LIFESTYLE),
+        key=get_label
+    )
+    if not all_lifestyle:
+        return "No lifestyle factors found in the ontology."
+    labels = [get_label(f) for f in all_lifestyle]
     return "Lifestyle influencing factors in the ontology:\n" + "\n".join(f"• {l}" for l in labels)
 
 
