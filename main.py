@@ -583,18 +583,96 @@ def handle_get_disease_from_symptom(params):
 
 
 def handle_get_overlapping(params):
-    disease_uri = resolve_disease(params.get("disease", ""))
+    """
+    Two modes depending on which params Dialogflow sends:
 
-    if disease_uri:
-        overlapping = get_symptoms_of_disease(disease_uri, "hasOverlappingSymptom")
-        dname       = DISEASE_NAMES.get(str(disease_uri), "")
+    MODE A — Two diseases specified (disease + disease1 params):
+      Compute the TRUE symptom intersection between the two diseases by
+      combining all three OWL properties (hasPrimarySymptom, hasSymptom,
+      hasOverlappingSymptom) for each disease, then intersecting the sets.
+      This is what the user means when they ask
+      "What symptoms are shared between AD and PD?" — they want the actual
+      overlap, not a pre-stored hasOverlappingSymptom list for one disease.
+
+    MODE B — One disease specified (disease param only):
+      Return the hasOverlappingSymptom list stored in the ontology for that
+      disease (original behaviour).
+
+    MODE C — No disease specified:
+      Return the hasOverlappingSymptom list for all three diseases.
+
+    Reads from params:
+      disease  — first disease  (Dialogflow @Disease entity)
+      disease1 — second disease (Dialogflow @Disease entity, may be absent)
+      The two params may also both arrive inside the 'disease' list if
+      Dialogflow packs them together.
+    """
+    # Collect both disease values — Dialogflow may send them in 'disease',
+    # 'disease1', or a mix of both
+    raw_disease  = params.get("disease",  "")
+    raw_disease1 = params.get("disease1", "")
+
+    # _unwrap_param_list handles both list and string inputs
+    all_vals = (
+        _unwrap_param_list(raw_disease) +
+        _unwrap_param_list(raw_disease1)
+    )
+
+    # Resolve and deduplicate
+    seen: set = set()
+    resolved: list = []
+    for val in all_vals:
+        uri = resolve_disease(val)
+        if uri and str(uri) not in seen:
+            seen.add(str(uri))
+            resolved.append(uri)
+
+    # ── MODE A: two diseases — compute true intersection ──────────────────────
+    if len(resolved) >= 2:
+        d1_uri = resolved[0]
+        d2_uri = resolved[1]
+        n1 = DISEASE_NAMES.get(str(d1_uri), get_label(d1_uri))
+        n2 = DISEASE_NAMES.get(str(d2_uri), get_label(d2_uri))
+
+        def all_symptoms(disease_uri):
+            """Union of all three symptom properties for a disease."""
+            return (
+                set(g.objects(disease_uri, TRIAGE["hasPrimarySymptom"]))  |
+                set(g.objects(disease_uri, TRIAGE["hasSymptom"]))          |
+                set(g.objects(disease_uri, TRIAGE["hasOverlappingSymptom"]))
+            )
+
+        syms1 = all_symptoms(d1_uri)
+        syms2 = all_symptoms(d2_uri)
+        shared = syms1 & syms2
+
+        if not shared:
+            return (
+                f"No shared symptoms found between {n1} and {n2} "
+                "in the ontology."
+            )
+
+        labels = sorted(get_label(s) for s in shared)
+        return (
+            f"Symptoms shared between {n1} and {n2} "
+            f"({len(shared)} found):\n"
+            + "\n".join(f"• {l}" for l in labels)
+        )
+
+    # ── MODE B: one disease — return its hasOverlappingSymptom list ───────────
+    if len(resolved) == 1:
+        d_uri = resolved[0]
+        overlapping = get_symptoms_of_disease(d_uri, "hasOverlappingSymptom")
+        dname = DISEASE_NAMES.get(str(d_uri), "")
         if not overlapping:
             return f"No overlapping symptoms documented for {dname}."
         return (
-            f"Overlapping symptoms for {dname} (also seen in other diseases):\n"
+            f"Overlapping symptoms for {dname} "
+            "(also seen in other diseases):\n"
             + get_symptom_display_list(overlapping)
         )
 
+    # ── MODE C: no disease — return all hasOverlappingSymptom lists ───────────
     result_lines = []
     for d in ALL_DISEASE_URIS:
         overlapping = get_symptoms_of_disease(d, "hasOverlappingSymptom")
