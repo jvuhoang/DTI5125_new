@@ -1,2 +1,4 @@
-flask>=2.3.0
-rdflib>=6.3.2
+
+flask
+rdflib
+gunicorn
