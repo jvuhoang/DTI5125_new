@@ -612,17 +612,27 @@ def handle_get_overlapping(params):
 
 def handle_differentiate(params):
     """
-    FIX-2: Dialogflow ES places both disease names into the single 'disease'
-    list param when the user specifies two diseases in one utterance.
-    Collect values from both 'disease' and 'disease2', deduplicate, then
-    compare only the specified diseases.
+    Collect disease values from both 'disease' and 'disease2' params,
+    deduplicate, then generate ALL unique pairwise comparisons using
+    itertools.combinations.
+
+    1 disease  -> compare against all other two (2 pairs total)
+    2 diseases -> compare only those two (1 pair)
+    3 diseases -> compare every unique pair: A vs B, A vs C, B vs C (3 pairs)
+
+    The previous version anchored on d1 and compared d1 vs each other disease,
+    producing PD vs ALS and PD vs AD but missing ALS vs AD when all three
+    were provided.
     """
+    from itertools import combinations
+
     all_vals = (
         _unwrap_param_list(params.get("disease",  "")) +
         _unwrap_param_list(params.get("disease2", ""))
     )
 
-    seen: set        = set()
+    # Resolve and deduplicate while preserving order
+    seen: set = set()
     resolved_uris: list = []
     for val in all_vals:
         uri = resolve_disease(val)
@@ -633,19 +643,22 @@ def handle_differentiate(params):
     if not resolved_uris:
         return "Please specify at least one disease to compare: Alzheimer's, Parkinson's, or ALS."
 
-    d1 = resolved_uris[0]
-    compare_diseases = (
-        resolved_uris[1:]
-        if len(resolved_uris) >= 2
-        else [d for d in ALL_DISEASE_URIS if d != d1]
-    )
+    # Build the list of pairs to compare
+    if len(resolved_uris) == 1:
+        # Only one disease given — compare it against all others
+        d1 = resolved_uris[0]
+        compare_pairs = [(d1, d) for d in ALL_DISEASE_URIS if d != d1]
+    else:
+        # 2 or 3 diseases — generate every unique pair
+        # combinations preserves order and never repeats (A,B) as (B,A)
+        compare_pairs = list(combinations(resolved_uris, 2))
 
     parts = []
-    for d2_uri in compare_diseases:
-        n1 = DISEASE_SHORT.get(str(d1),     get_label(d1))
+    for d1_uri, d2_uri in compare_pairs:
+        n1 = DISEASE_SHORT.get(str(d1_uri), get_label(d1_uri))
         n2 = DISEASE_SHORT.get(str(d2_uri), get_label(d2_uri))
 
-        primary1 = set(g.objects(d1,     TRIAGE["hasPrimarySymptom"]))
+        primary1 = set(g.objects(d1_uri, TRIAGE["hasPrimarySymptom"]))
         primary2 = set(g.objects(d2_uri, TRIAGE["hasPrimarySymptom"]))
         unique1  = primary1 - primary2
         unique2  = primary2 - primary1
